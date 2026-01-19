@@ -1,0 +1,858 @@
+// 📁 index.html - ОДИН ФАЙЛ ВСЯ ИГРА
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VERITAS - Игра Правды</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --truth-color: #198754;
+            --lie-color: #dc3545;
+            --primary-color: #0d6efd;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        .game-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            backdrop-filter: blur(10px);
+        }
+        
+        .option-card {
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 3px solid transparent;
+        }
+        
+        .option-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+        
+        .option-card.selected {
+            border-color: var(--primary-color);
+            background: #e8f4ff;
+        }
+        
+        .truth-level-1 { border-left: 5px solid var(--truth-color); }
+        .truth-level-2 { border-left: 5px solid #20c997; }
+        .truth-level-3 { border-left: 5px solid #ffc107; }
+        .truth-level-4 { border-left: 5px solid #fd7e14; }
+        .truth-level-5 { border-left: 5px solid var(--lie-color); }
+        
+        .progress-bar {
+            transition: width 0.5s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.5s ease;
+        }
+        
+        /* Мобильная адаптация */
+        @media (max-width: 768px) {
+            .game-card {
+                border-radius: 10px;
+                margin: 10px;
+            }
+            .display-4 {
+                font-size: 2rem;
+            }
+        }
+        
+        .character-card {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .consequence-alert {
+            border-radius: 15px;
+            border: none;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="container py-4"></div>
+    
+    <!-- Модальные окна -->
+    <div class="modal fade" id="resultsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">🏁 Игра завершена!</h5>
+                </div>
+                <div class="modal-body" id="resultsContent"></div>
+                <div class="modal-footer">
+                    <button onclick="newGame()" class="btn btn-success">🎮 Новая игра</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // ==================== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ====================
+        const TRUTH_LEVELS = [
+            { name: "Абсолютная правда", color: "success", integrity: 10, risk: 8 },
+            { name: "Смягченная правда", color: "info", integrity: 7, risk: 5 },
+            { name: "Полуправда", color: "warning", integrity: 3, risk: 4 },
+            { name: "Белая ложь", color: "secondary", integrity: -3, risk: 3 },
+            { name: "Манипуляция", color: "danger", integrity: -7, risk: 6 },
+            { name: "Конспирология", color: "dark", integrity: -10, risk: 9 }
+        ];
+
+        const SCENARIOS = {
+            politics: {
+                name: "Политика",
+                icon: "🏛️",
+                description: "Вы - советник кандидата на выборах. Скандалы, компромат, дебаты."
+            },
+            media: {
+                name: "Медиа",
+                icon: "📰",
+                description: "Вы - главный редактор. Фейки, цензура, рейтинги vs правда."
+            },
+            corporate: {
+                name: "Корпорация",
+                icon: "💼",
+                description: "Вы - PR-директор. Утечки данных, скандалы, акционеры."
+            },
+            art: {
+                name: "Искусство",
+                icon: "🎭",
+                description: "Вы - галерист. Плагиат, провокации, продажность искусства."
+            }
+        };
+
+        // ==================== КЛАССЫ ИГРЫ ====================
+        class Character {
+            constructor(scenario) {
+                this.names = {
+                    politics: ["Алексей Воронов", "Мария Светлова", "Дмитрий Коваль"],
+                    media: ["Ирина Журналова", "Сергей Редакторов", "Ольга Прессова"],
+                    corporate: ["Виктор Бизнесов", "Анна Директорова", "Максим Акционеров"],
+                    art: ["Екатерина Артова", "Павел Художников", "Татьяна Галеристова"]
+                };
+                
+                this.secrets = {
+                    politics: [
+                        "скрывает финансирование от олигарха",
+                        "имеет счёт в офшоре",
+                        "плагиатил дипломную работу"
+                    ],
+                    media: [
+                        "публиковал фейки по заказу",
+                        "получал взятки за умолчание",
+                        "работает на спецслужбы"
+                    ],
+                    corporate: [
+                        "подтасовывал финансовую отчётность",
+                        "продавал данные клиентов",
+                        "скрывал экологические нарушения"
+                    ],
+                    art: [
+                        "продаёт подделки как оригиналы",
+                        "воровал идеи у студентов",
+                        "организовывал провокации для славы"
+                    ]
+                };
+                
+                this.name = this.getRandom(this.names[scenario]);
+                this.secret = this.getRandom(this.secrets[scenario]);
+                this.trust = 50;
+                this.reputation = 50;
+                this.traits = this.generateTraits();
+            }
+            
+            getRandom(arr) {
+                return arr[Math.floor(Math.random() * arr.length)];
+            }
+            
+            generateTraits() {
+                const traits = [
+                    "Прямолинейный", "Циничный", "Идеалист", "Карьерист",
+                    "Прагматик", "Нарцисс", "Эмпат", "Конспиролог"
+                ];
+                return this.getRandom(traits);
+            }
+        }
+
+        class GameState {
+            constructor(scenario, difficulty) {
+                this.scenario = scenario;
+                this.difficulty = difficulty;
+                this.day = 1;
+                this.trustCapital = 100;
+                this.integrityScore = 0;
+                this.deceptionScore = 0;
+                this.characters = [];
+                this.history = [];
+                this.activeCharacter = null;
+                this.generateCharacters();
+            }
+            
+            generateCharacters() {
+                for (let i = 0; i < 3; i++) {
+                    this.characters.push(new Character(this.scenario));
+                }
+                this.activeCharacter = this.characters[0];
+            }
+            
+            getTruthPercent() {
+                const total = this.integrityScore + this.deceptionScore;
+                return total > 0 ? Math.round((this.integrityScore / total) * 100) : 50;
+            }
+        }
+
+        // ==================== ГЕНЕРАТОР ДИЛЕММ ====================
+        class DilemmaGenerator {
+            static generate(scenario, character, day) {
+                const templates = {
+                    politics: [
+                        `Утечка переписок: ${character.name} ${character.secret}. Пресс-конференция через час.`,
+                        `На дебатах оппонент обвиняет ${character.name} в ${character.secret}. Прямой эфир.`,
+                        `Журналисты обнаружили, что ${character.name} ${character.secret}. Комментарий до вечера.`
+                    ],
+                    media: [
+                        `Источник подтверждает: публичное лицо ${character.secret}. Публиковать без доказательств?`,
+                        `Владелец требует скрыть факт ${character.secret}. Угрожает увольнением.`,
+                        `Конкуренты публикуют фейк о вас. ${character.name} предлагает ответить своей ложью.`
+                    ],
+                    corporate: [
+                        `Внутренний аудит обнаружил: ${character.name} ${character.secret}. Отчёт акционерам завтра.`,
+                        `Экоактивисты нашли доказательства ${character.secret}. Пресс-релиз нужно подготовить.`,
+                        `Инсайдер угрожает раскрыть, что ${character.name} ${character.secret}. Нужно реагировать.`
+                    ],
+                    art: [
+                        `Критики обвиняют ${character.name} в ${character.secret}. Интервью в прямом эфире.`,
+                        `Спонсор требует скрыть, что ${character.name} ${character.secret}. Выставка завтра.`,
+                        `Коллега грозит раскрыть, что ${character.name} ${character.secret}. Вернисаж сегодня.`
+                    ]
+                };
+                
+                const options = [
+                    "Признать всё открыто, взять ответственность",
+                    "Признать частично, смягчить формулировки",
+                    "Сказать правду, но опустить ключевые детали",
+                    "Отрицать, сославшись на недопонимание",
+                    "Обвинить других, перевернуть повестку",
+                    "Заявить о заговоре против вас"
+                ];
+                
+                return {
+                    id: `dilemma_${Date.now()}`,
+                    text: DilemmaGenerator.getRandom(templates[scenario]),
+                    character: character,
+                    day: day,
+                    pressure: Math.min(10, day + 2),
+                    options: options.map((text, i) => ({
+                        text: text,
+                        level: i,
+                        integrity: TRUTH_LEVELS[i].integrity,
+                        risk: TRUTH_LEVELS[i].risk
+                    }))
+                };
+            }
+            
+            static getRandom(arr) {
+                return arr[Math.floor(Math.random() * arr.length)];
+            }
+        }
+
+        // ==================== ЯДРО ИГРЫ ====================
+        class VeritasGame {
+            constructor() {
+                this.state = null;
+                this.currentDilemma = null;
+                this.ui = new GameUI();
+            }
+            
+            startNewGame(scenario = 'politics', difficulty = 'normal') {
+                this.state = new GameState(scenario, difficulty);
+                this.nextDilemma();
+                this.ui.renderGame(this);
+            }
+            
+            nextDilemma() {
+                if (this.state.day > 10) {
+                    this.endGame();
+                    return;
+                }
+                
+                this.currentDilemma = DilemmaGenerator.generate(
+                    this.state.scenario,
+                    this.state.activeCharacter,
+                    this.state.day
+                );
+            }
+            
+            makeChoice(choiceIndex) {
+                const choice = this.currentDilemma.options[choiceIndex];
+                const consequences = this.calculateConsequences(choice);
+                
+                // Обновляем состояние
+                this.state.activeCharacter.trust += consequences.trustChange;
+                this.state.activeCharacter.reputation += consequences.repChange;
+                this.state.trustCapital += consequences.capitalChange;
+                
+                if (choice.integrity > 0) {
+                    this.state.integrityScore += Math.abs(choice.integrity);
+                } else {
+                    this.state.deceptionScore += Math.abs(choice.integrity);
+                }
+                
+                // Сохраняем в историю
+                this.state.history.push({
+                    day: this.state.day,
+                    character: this.state.activeCharacter.name,
+                    choice: choice.text,
+                    consequences: consequences
+                });
+                
+                // Меняем персонажа
+                this.state.activeCharacter = this.state.characters[
+                    this.state.day % this.state.characters.length
+                ];
+                
+                this.state.day++;
+                
+                // Показываем последствия
+                this.ui.showConsequences(consequences, () => {
+                    if (this.state.day > 10 || this.state.trustCapital <= 0) {
+                        this.endGame();
+                    } else {
+                        this.nextDilemma();
+                        this.ui.renderGame(this);
+                    }
+                });
+            }
+            
+            calculateConsequences(choice) {
+                // Базовые изменения
+                let trustChange = choice.integrity * 2;
+                let repChange = -choice.risk * 2;
+                let capitalChange = choice.integrity;
+                
+                // Влияние сложности
+                if (this.state.difficulty === 'hard') {
+                    trustChange *= 1.3;
+                    repChange *= 1.3;
+                } else if (this.state.difficulty === 'easy') {
+                    trustChange *= 0.7;
+                    repChange *= 0.7;
+                }
+                
+                // Случайность
+                trustChange += Math.floor(Math.random() * 10) - 5;
+                repChange += Math.floor(Math.random() * 10) - 5;
+                
+                // Особые последствия
+                const special = [];
+                if (Math.random() < 0.3) {
+                    special.push("Ваше заявление вызвало волну обсуждений в соцсетях");
+                }
+                if (choice.level >= 4 && Math.random() < 0.4) {
+                    special.push("Появились новые доказательства против вас");
+                    repChange -= 10;
+                }
+                
+                return {
+                    trustChange: Math.round(trustChange),
+                    repChange: Math.round(repChange),
+                    capitalChange: Math.round(capitalChange),
+                    special: special,
+                    description: this.generateConsequenceText(choice, trustChange, repChange)
+                };
+            }
+            
+            generateConsequenceText(choice, trustChange, repChange) {
+                const texts = {
+                    positive: [
+                        "Персонаж оценил вашу честность",
+                        "Публика уважает вашу открытость",
+                        "Ваша репутация растёт",
+                        "Доверие укрепляется"
+                    ],
+                    negative: [
+                        "Персонаж разочарован вашим выбором",
+                        "Публика не оценила вашу хитрость",
+                        "Репутация пострадала",
+                        "Доверие пошатнулось"
+                    ],
+                    neutral: [
+                        "Реакция неоднозначная",
+                        "Последствия проявятся позже",
+                        "Ситуация остаётся напряжённой"
+                    ]
+                };
+                
+                if (trustChange > 10) return this.getRandom(texts.positive);
+                if (trustChange < -10) return this.getRandom(texts.negative);
+                return this.getRandom(texts.neutral);
+            }
+            
+            getRandom(arr) {
+                return arr[Math.floor(Math.random() * arr.length)];
+            }
+            
+            endGame() {
+                const results = {
+                    finalScore: this.calculateFinalScore(),
+                    trustCapital: this.state.trustCapital,
+                    integrityScore: this.state.integrityScore,
+                    deceptionScore: this.state.deceptionScore,
+                    truthPercent: this.state.getTruthPercent(),
+                    playerType: this.determinePlayerType(),
+                    characterFates: this.getCharacterFates()
+                };
+                
+                this.ui.showResults(results);
+            }
+            
+            calculateFinalScore() {
+                const truthBonus = this.state.getTruthPercent() * 2;
+                return Math.max(0, this.state.trustCapital + truthBonus);
+            }
+            
+            determinePlayerType() {
+                const percent = this.state.getTruthPercent();
+                if (percent >= 80) return "🕊️ ИДЕАЛИСТ ПРАВДЫ";
+                if (percent >= 60) return "⚖️ ЧЕСТНЫЙ СТРАТЕГ";
+                if (percent >= 40) return "🎭 ПРАГМАТИЧНЫЙ БАЛАНСИР";
+                if (percent >= 20) return "🦊 ЦИНИЧНЫЙ МАНИПУЛЯТОР";
+                return "👺 КОНСПИРОЛОГ-РАЗРУШИТЕЛЬ";
+            }
+            
+            getCharacterFates() {
+                return this.state.characters.map(char => ({
+                    name: char.name,
+                    finalTrust: char.trust,
+                    finalRep: char.reputation,
+                    fate: this.getCharacterFate(char)
+                }));
+            }
+            
+            getCharacterFate(char) {
+                if (char.trust >= 80) return "Стал вашим верным союзником";
+                if (char.trust >= 60) return "Сохранил лояльность";
+                if (char.trust >= 40) return "Отношения охладели";
+                if (char.trust >= 20) return "Предал вас при первой возможности";
+                return "Раскрыл ваши секреты конкурентам";
+            }
+        }
+
+        // ==================== ИНТЕРФЕЙС ПОЛЬЗОВАТЕЛЯ ====================
+        class GameUI {
+            constructor() {
+                this.app = document.getElementById('app');
+            }
+            
+            renderGame(game) {
+                const state = game.state;
+                const dilemma = game.currentDilemma;
+                
+                this.app.innerHTML = `
+                    <div class="game-card p-4 p-md-5 fade-in">
+                        <!-- Заголовок -->
+                        <div class="text-center mb-4">
+                            <h1 class="display-4 mb-2">🎭 VERITAS</h1>
+                            <div class="d-flex justify-content-center gap-3 mb-3">
+                                <span class="badge bg-primary">${SCENARIOS[state.scenario].icon} ${SCENARIOS[state.scenario].name}</span>
+                                <span class="badge bg-secondary">День ${state.day}/10</span>
+                                <span class="badge bg-${state.difficulty === 'hard' ? 'danger' : state.difficulty === 'easy' ? 'success' : 'warning'}">
+                                    ${state.difficulty === 'hard' ? 'Эксперт' : state.difficulty === 'easy' ? 'Новичок' : 'Стандарт'}
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <!-- Статистика -->
+                        <div class="row mb-4">
+                            <div class="col-md-3 col-6 mb-3">
+                                <div class="card text-center h-100">
+                                    <div class="card-body">
+                                        <h2 class="text-primary">${state.trustCapital}</h2>
+                                        <small class="text-muted">Кредит доверия</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3 col-6 mb-3">
+                                <div class="card text-center h-100">
+                                    <div class="card-body">
+                                        <h2 class="text-success">${state.integrityScore}</h2>
+                                        <small class="text-muted">Очки честности</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3 col-6 mb-3">
+                                <div class="card text-center h-100">
+                                    <div class="card-body">
+                                        <h2 class="text-danger">${state.deceptionScore}</h2>
+                                        <small class="text-muted">Очки лжи</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3 col-6 mb-3">
+                                <div class="card text-center h-100">
+                                    <div class="card-body">
+                                        <div class="progress" style="height: 30px;">
+                                            <div class="progress-bar bg-success" style="width: ${state.getTruthPercent()}%">
+                                                ${state.getTruthPercent()}%
+                                            </div>
+                                        </div>
+                                        <small class="text-muted">Баланс правды</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Персонаж -->
+                        <div class="character-card mb-4">
+                            <h4>👤 ${dilemma.character.name}</h4>
+                            <p class="mb-2"><strong>Черта:</strong> ${dilemma.character.traits}</p>
+                            <p class="mb-0"><strong>Секрет:</strong> ${dilemma.character.secret}</p>
+                            <div class="d-flex gap-4 mt-2">
+                                <small>Доверие: ${dilemma.character.trust}/100</small>
+                                <small>Репутация: ${dilemma.character.reputation}/100</small>
+                            </div>
+                        </div>
+                        
+                        <!-- Дилемма -->
+                        <div class="mb-4">
+                            <h4 class="mb-3">📜 Дилемма дня (Давление: ${dilemma.pressure}/10)</h4>
+                            <div class="alert alert-dark fs-5">
+                                ${dilemma.text}
+                            </div>
+                        </div>
+                        
+                        <!-- Варианты -->
+                        <h4 class="mb-3">🤔 Ваш выбор:</h4>
+                        <div class="row g-3" id="optionsContainer">
+                            ${dilemma.options.map((opt, i) => `
+                                <div class="col-md-6">
+                                    <div class="option-card card h-100 truth-level-${opt.level + 1}" 
+                                         onclick="game.makeChoice(${i})"
+                                         data-choice="${i}">
+                                        <div class="card-body">
+                                            <h5 class="card-title">${TRUTH_LEVELS[opt.level].name}</h5>
+                                            <p class="card-text">${opt.text}</p>
+                                            <div class="d-flex justify-content-between mt-3">
+                                                <span class="badge bg-${TRUTH_LEVELS[opt.level].color}">
+                                                    Честность: ${opt.integrity > 0 ? '+' : ''}${opt.integrity}
+                                                </span>
+                                                <span class="badge bg-secondary">
+                                                    Риск: ${opt.risk}/10
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        
+                        <!-- Управление -->
+                        <div class="mt-4 text-center">
+                            <div class="btn-group">
+                                <button onclick="showStartScreen()" class="btn btn-outline-secondary">
+                                    🏠 В меню
+                                </button>
+                                <button onclick="saveGame()" class="btn btn-outline-primary">
+                                    💾 Сохранить
+                                </button>
+                            </div>
+                            <div class="mt-3">
+                                <small class="text-muted">Выберите вариант кликом или используйте цифры 1-6</small>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // Добавляем обработку клавиш
+                this.addKeyboardListeners(game);
+            }
+            
+            addKeyboardListeners(game) {
+                const handler = (e) => {
+                    if (e.key >= '1' && e.key <= '6') {
+                        const index = parseInt(e.key) - 1;
+                        if (index < game.currentDilemma.options.length) {
+                            document.querySelectorAll('.option-card')[index].click();
+                        }
+                    }
+                };
+                
+                document.removeEventListener('keydown', window._keyHandler);
+                window._keyHandler = handler;
+                document.addEventListener('keydown', handler);
+            }
+            
+            showConsequences(consequences, callback) {
+                const specialHTML = consequences.special.length > 0 ? `
+                    <div class="alert alert-warning mt-3">
+                        <strong>⚡ Особые последствия:</strong>
+                        <ul class="mb-0 mt-2">
+                            ${consequences.special.map(s => `<li>${s}</li>`).join('')}
+                        </ul>
+                    </div>
+                ` : '';
+                
+                const html = `
+                    <div class="consequence-alert alert alert-info">
+                        <h4>📊 Последствия вашего решения</h4>
+                        <p class="fs-5">${consequences.description}</p>
+                        
+                        <div class="row text-center mt-4">
+                            <div class="col-4">
+                                <div class="h3 ${consequences.trustChange >= 0 ? 'text-success' : 'text-danger'}">
+                                    ${consequences.trustChange >= 0 ? '+' : ''}${consequences.trustChange}
+                                </div>
+                                <small>Доверие</small>
+                            </div>
+                            <div class="col-4">
+                                <div class="h3 ${consequences.repChange >= 0 ? 'text-success' : 'text-danger'}">
+                                    ${consequences.repChange >= 0 ? '+' : ''}${consequences.repChange}
+                                </div>
+                                <small>Репутация</small>
+                            </div>
+                            <div class="col-4">
+                                <div class="h3 ${consequences.capitalChange >= 0 ? 'text-success' : 'text-danger'}">
+                                    ${consequences.capitalChange >= 0 ? '+' : ''}${consequences.capitalChange}
+                                </div>
+                                <small>Кредит доверия</small>
+                            </div>
+                        </div>
+                        
+                        ${specialHTML}
+                        
+                        <div class="text-center mt-4">
+                            <button onclick="closeConsequences()" class="btn btn-primary btn-lg">
+                                Продолжить
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                this.app.innerHTML = html;
+                
+                window.closeConsequences = () => {
+                    if (callback) callback();
+                };
+            }
+            
+            showResults(results) {
+                const modal = new bootstrap.Modal(document.getElementById('resultsModal'));
+                const content = document.getElementById('resultsContent');
+                
+                content.innerHTML = `
+                    <div class="text-center">
+                        <h2 class="mb-4">${results.playerType}</h2>
+                        
+                        <div class="row mb-4">
+                            <div class="col-md-3 col-6 mb-3">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h3 class="text-primary">${results.finalScore}</h3>
+                                        <small>Итоговый счёт</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3 col-6 mb-3">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h3 class="text-success">${results.trustCapital}</h3>
+                                        <small>Кредит доверия</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3 col-6 mb-3">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h3 class="text-info">${results.truthPercent}%</h3>
+                                        <small>Честность</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3 col-6 mb-3">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h3>${results.integrityScore}/${results.deceptionScore}</h3>
+                                        <small>Правда/Ложь</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="alert alert-dark">
+                            <h5>Судьба персонажей:</h5>
+                            ${results.characterFates.map(char => `
+                                <div class="d-flex justify-content-between border-bottom py-2">
+                                    <span>${char.name}</span>
+                                    <span class="badge bg-${char.finalTrust >= 60 ? 'success' : char.finalTrust >= 40 ? 'warning' : 'danger'}">
+                                        ${char.fate}
+                                    </span>
+                                </div>
+                            `).join('')}
+                        </div>
+                        
+                        <div class="mt-4">
+                            <p class="lead">
+                                ${this.getEpilogue(results.playerType)}
+                            </p>
+                        </div>
+                    </div>
+                `;
+                
+                modal.show();
+            }
+            
+            getEpilogue(playerType) {
+                const epilogues = {
+                    "🕊️ ИДЕАЛИСТ ПРАВДЫ": "Вы прошли огонь и воду, не сломавшись. Ваша честность стала легендой, хотя и стоила многих союзников.",
+                    "⚖️ ЧЕСТНЫЙ СТРАТЕГ": "Вы балансировали между принципами и реальностью, находя золотую середину. Пример для подражания.",
+                    "🎭 ПРАГМАТИЧНЫЙ БАЛАНСИР": "Вы выжили в системе, иногда сгибаясь, но не ломаясь. Типичный продукт эпохи постправды.",
+                    "🦊 ЦИНИЧНЫЙ МАНИПУЛЯТОР": "Вы достигли вершины, оставив за собой сломанные судьбы. Власть есть, но одиночество - плата.",
+                    "👺 КОНСПИРОЛОГ-РАЗРУШИТЕЛЬ": "Вы сеяли хаос и пожинали его плоды. Правда была вашим врагом, и вы победили её."
+                };
+                return epilogues[playerType] || "Путь окончен. История рассудит.";
+            }
+            
+            renderStartScreen() {
+                this.app.innerHTML = `
+                    <div class="game-card p-4 p-md-5 text-center fade-in">
+                        <h1 class="display-1 mb-4">🎭</h1>
+                        <h1 class="display-3 mb-3">VERITAS</h1>
+                        <p class="lead mb-5">Искренность vs Постправда в цифровую эпоху</p>
+                        
+                        <div class="row justify-content-center mb-5">
+                            <div class="col-md-8">
+                                <div class="alert alert-dark">
+                                    <h5>🎮 10 дней сложных решений</h5>
+                                    <p class="mb-0">Выберите сценарий и пройдите путь от искренности до манипуляции.</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row g-4 mb-5">
+                            ${Object.entries(SCENARIOS).map(([key, scenario]) => `
+                                <div class="col-md-3 col-6">
+                                    <div class="card h-100 option-card" onclick="startScenario('${key}')">
+                                        <div class="card-body">
+                                            <h2 class="mb-3">${scenario.icon}</h2>
+                                            <h5>${scenario.name}</h5>
+                                            <p class="small text-muted">${scenario.description}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        
+                        <div class="mb-4">
+                            <h5 class="mb-3">Выберите сложность:</h5>
+                            <div class="btn-group" role="group">
+                                <button onclick="startGameWithDifficulty('easy')" class="btn btn-success">
+                                    🟢 Новичок
+                                </button>
+                                <button onclick="startGameWithDifficulty('normal')" class="btn btn-warning">
+                                    🟡 Стандарт
+                                </button>
+                                <button onclick="startGameWithDifficulty('hard')" class="btn btn-danger">
+                                    🔴 Эксперт
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-5">
+                            <small class="text-muted">
+                                Игра исследует дилеммы современного мира: политика, медиа, корпорации, искусство
+                            </small>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // ==================== ГЛОБАЛЬНЫЕ ФУНКЦИИ ====================
+        let game = new VeritasGame();
+        let selectedScenario = 'politics';
+        let selectedDifficulty = 'normal';
+
+        function showStartScreen() {
+            game.ui.renderStartScreen();
+        }
+
+        function startScenario(scenario) {
+            selectedScenario = scenario;
+            document.querySelectorAll('.card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            event.currentTarget.classList.add('selected');
+        }
+
+        function startGameWithDifficulty(difficulty) {
+            selectedDifficulty = difficulty;
+            game.startNewGame(selectedScenario, selectedDifficulty);
+        }
+
+        function newGame() {
+            bootstrap.Modal.getInstance(document.getElementById('resultsModal')).hide();
+            showStartScreen();
+        }
+
+        function saveGame() {
+            if (game.state) {
+                const saveData = {
+                    state: game.state,
+                    timestamp: new Date().toISOString()
+                };
+                localStorage.setItem('veritas_save', JSON.stringify(saveData));
+                alert('🎮 Игра сохранена! Вы можете продолжить позже.');
+            }
+        }
+
+        function loadGame() {
+            const saved = localStorage.getItem('veritas_save');
+            if (saved) {
+                try {
+                    const saveData = JSON.parse(saved);
+                    // Здесь можно восстановить игру
+                    alert('Загружено сохранение!');
+                } catch (e) {
+                    console.error('Ошибка загрузки:', e);
+                }
+            }
+        }
+
+        // ==================== ЗАПУСК ИГРЫ ====================
+        document.addEventListener('DOMContentLoaded', () => {
+            // Показываем стартовый экран
+            showStartScreen();
+            
+            // Загружаем сохранение, если есть
+            loadGame();
+            
+            // Добавляем глобальные функции
+            window.game = game;
+            window.showStartScreen = showStartScreen;
+            window.startScenario = startScenario;
+            window.startGameWithDifficulty = startGameWithDifficulty;
+            window.newGame = newGame;
+            window.saveGame = saveGame;
+        });
+    </script>
+</body>
+</html>
